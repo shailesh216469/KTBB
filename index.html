@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Social App – Production Realtime</title>
+
+<style>
+body{
+ font-family:system-ui;
+ background:#f3f4f6;
+ padding:20px;
+}
+.card{
+ background:white;
+ padding:16px;
+ border-radius:16px;
+ margin-top:18px;
+ box-shadow:0 4px 20px rgba(0,0,0,.08);
+}
+button{
+ padding:6px 12px;
+ border:none;
+ border-radius:8px;
+ cursor:pointer;
+ margin-top:10px;
+ font-size:13px;
+}
+.primary{background:#4f46e5;color:white;}
+.like-btn{background:#10b981;color:white;}
+textarea{
+ width:100%;
+ padding:8px;
+ border-radius:8px;
+}
+</style>
+</head>
+<body>
+
+<h2>🔥 Social App – Production Realtime</h2>
+
+<div class="card">
+<textarea id="postInput" placeholder="Write something..."></textarea>
+<br><br>
+<button id="postBtn" class="primary">Post</button>
+</div>
+
+<div id="feed"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", async ()=>{
+
+const supabase = window.supabase.createClient(
+ "https://dgehzagvyrxbnnvgsiff.supabase.co",
+ "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
+);
+
+let user = null;
+
+/* ================= INIT ================= */
+async function init(){
+ const { data } = await supabase.auth.getUser();
+ user = data.user;
+
+ supabase.auth.onAuthStateChange((e,session)=>{
+   user = session?.user || null;
+ });
+
+ await loadPosts();
+ subscribeRealtime();
+}
+init();
+
+/* ================= CREATE POST ================= */
+document.getElementById("postBtn")
+.addEventListener("click", async ()=>{
+
+ if(!user) return alert("Login first");
+
+ const content = document.getElementById("postInput").value.trim();
+ if(!content) return;
+
+ await supabase.from("posts").insert([{
+   content,
+   user_id:user.id,
+   username:user.email
+ }]);
+
+ document.getElementById("postInput").value="";
+});
+
+/* ================= LOAD POSTS ================= */
+async function loadPosts(){
+
+ const { data } = await supabase
+   .from("posts")
+   .select("*")
+   .order("created_at",{ascending:false});
+
+ feed.innerHTML="";
+
+ for(const post of data){
+   renderPost(post);
+ }
+}
+
+/* ================= RENDER POST ================= */
+async function renderPost(post){
+
+ if(document.getElementById("post-"+post.id)) return;
+
+ const likeCount = await getLikeCount(post.id);
+ const liked = await didUserLike(post.id);
+
+ const div = document.createElement("div");
+ div.className="card";
+ div.id="post-"+post.id;
+
+ div.innerHTML=`
+   <b>${post.username || "User"}</b>
+   <div style="margin-top:8px">${post.content}</div>
+
+   <button class="like-btn"
+     id="like-${post.id}"
+     onclick="toggleLike('${post.id}')">
+     ${liked ? "Unlike" : "Like"} (${likeCount})
+   </button>
+ `;
+
+ feed.prepend(div);
+}
+
+/* ================= LIKE HELPERS ================= */
+
+async function getLikeCount(postId){
+ const { count } = await supabase
+   .from("likes")
+   .select("*",{count:"exact",head:true})
+   .eq("post_id",postId);
+
+ return count || 0;
+}
+
+async function didUserLike(postId){
+ if(!user) return false;
+
+ const { data } = await supabase
+   .from("likes")
+   .select("id")
+   .eq("post_id",postId)
+   .eq("user_id",user.id);
+
+ return data.length>0;
+}
+
+/* ================= TOGGLE LIKE ================= */
+
+window.toggleLike = async function(postId){
+
+ if(!user) return alert("Login first");
+
+ const btn = document.getElementById("like-"+postId);
+ btn.disabled = true;
+
+ const { data } = await supabase
+   .from("likes")
+   .select("id")
+   .eq("post_id",postId)
+   .eq("user_id",user.id);
+
+ if(data.length>0){
+   await supabase
+     .from("likes")
+     .delete()
+     .eq("post_id",postId)
+     .eq("user_id",user.id);
+ }else{
+   await supabase
+     .from("likes")
+     .insert([{post_id:postId,user_id:user.id}]);
+ }
+
+ btn.disabled = false;
+};
+
+/* ================= REALTIME ================= */
+
+function subscribeRealtime(){
+
+ const channel = supabase.channel("social-live");
+
+ /* POSTS REALTIME */
+ channel.on(
+   "postgres_changes",
+   {event:"INSERT",schema:"public",table:"posts"},
+   payload=>{
+     renderPost(payload.new);
+   }
+ );
+
+ /* LIKES REALTIME */
+ channel.on(
+   "postgres_changes",
+   {event:"*",schema:"public",table:"likes"},
+   async payload=>{
+
+     console.log("LIKE EVENT:",payload);
+
+     const postId =
+       payload.new?.post_id ||
+       payload.old?.post_id;
+
+     if(!postId) return;
+
+     const btn = document.getElementById("like-"+postId);
+     if(!btn) return;
+
+     const { count } = await supabase
+       .from("likes")
+       .select("*",{count:"exact",head:true})
+       .eq("post_id",postId);
+
+     if(payload.eventType === "INSERT"){
+       if(payload.new.user_id === user?.id){
+         btn.innerText = `Unlike (${count||0})`;
+       } else {
+         btn.innerText = `Like (${count||0})`;
+       }
+     }
+
+     if(payload.eventType === "DELETE"){
+       if(payload.old.user_id === user?.id){
+         btn.innerText = `Like (${count||0})`;
+       } else {
+         btn.innerText = `Like (${count||0})`;
+       }
+     }
+
+   }
+ );
+
+ channel.subscribe(status=>{
+   console.log("Realtime:",status);
+ });
+}
+
+});
+</script>
+
+</body>
+</html>
