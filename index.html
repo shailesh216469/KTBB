@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Final Production</title>
+<title>Social App – Production</title>
 
 <style>
 body{
@@ -39,13 +39,14 @@ textarea{
 </head>
 <body>
 
-<h2>🔥 Social App – Final Production</h2>
+<h2>🔥 Social App – Production</h2>
 
 <div class="card">
 <div id="authSection">
 <button id="googleBtn" class="google">Login with Google</button>
 <button id="guestBtn" class="guest">Guest Login</button>
 </div>
+
 <div id="userSection" style="display:none;">
 <span id="userEmail"></span>
 <button id="logoutBtn" class="logout">Logout</button>
@@ -77,7 +78,6 @@ async function init(){
 
  const { data } = await supabase.auth.getUser();
  user = data.user;
-
  updateAuthUI();
 
  supabase.auth.onAuthStateChange((event, session)=>{
@@ -94,7 +94,10 @@ init();
 
 document.getElementById("googleBtn").onclick = async ()=>{
  await supabase.auth.signInWithOAuth({
-   provider: "google"
+   provider: "google",
+   options:{
+     redirectTo: "https://shailesh216469.github.io/KTBB/"
+   }
  });
 };
 
@@ -120,15 +123,16 @@ function updateAuthUI(){
 
 /* ================= CREATE POST ================= */
 
-document.getElementById("postBtn")
-.addEventListener("click", async ()=>{
+document.getElementById("postBtn").onclick = async ()=>{
 
  if(!user){
    alert("Login first");
    return;
  }
 
- const content = document.getElementById("postInput").value.trim();
+ const content =
+   document.getElementById("postInput").value.trim();
+
  if(!content) return;
 
  await supabase.from("posts").insert([{
@@ -138,7 +142,7 @@ document.getElementById("postBtn")
  }]);
 
  document.getElementById("postInput").value="";
-});
+};
 
 /* ================= LOAD POSTS ================= */
 
@@ -151,9 +155,9 @@ async function loadPosts(){
 
  feed.innerHTML="";
 
- for(const post of data){
+ data.forEach(post=>{
    renderPost(post);
- }
+ });
 }
 
 /* ================= RENDER POST ================= */
@@ -172,11 +176,10 @@ async function renderPost(post){
  div.innerHTML=`
    <b>${post.username || "User"}</b>
    <div style="margin-top:8px">${post.content}</div>
-
    <button class="like-btn"
      id="like-${post.id}"
      onclick="toggleLike('${post.id}')">
-     ${liked ? "Unlike" : "Like"} (${likeCount})
+     ${liked?"Unlike":"Like"} (${likeCount})
    </button>
  `;
 
@@ -259,7 +262,9 @@ function subscribeRealtime(){
 
      if(!postId) return;
 
-     const btn = document.getElementById("like-"+postId);
+     const btn =
+       document.getElementById("like-"+postId);
+
      if(!btn) return;
 
      const { count } = await supabase
@@ -267,7 +272,8 @@ function subscribeRealtime(){
        .select("*",{count:"exact",head:true})
        .eq("post_id",postId);
 
-     const liked = await didUserLike(postId);
+     const liked =
+       await didUserLike(postId);
 
      btn.innerText =
        `${liked?"Unlike":"Like"} (${count||0})`;
