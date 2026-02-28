@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Simple Stable</title>
+<title>Social App – Stable Clean</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
@@ -11,12 +11,27 @@ body{font-family:system-ui;background:#111;color:white;padding:20px}
 button{padding:6px 12px;border:none;border-radius:8px;margin-top:8px;cursor:pointer}
 .like{background:#10b981;color:white}
 .primary{background:#4f46e5;color:white}
+.google{background:#4285F4;color:white}
+.guest{background:#6b7280;color:white}
+.logout{background:#ef4444;color:white}
 textarea{width:100%;padding:8px;border-radius:8px;background:#222;color:white}
 </style>
 </head>
 <body>
 
 <h2>🔥 Social App – Stable Version</h2>
+
+<div class="card">
+<div id="authSection">
+<button id="googleBtn" class="google">Login with Google</button>
+<button id="guestBtn" class="guest">Guest Login</button>
+</div>
+
+<div id="userSection" style="display:none;">
+<span id="userEmail"></span>
+<button id="logoutBtn" class="logout">Logout</button>
+</div>
+</div>
 
 <div class="card">
 <textarea id="postInput" placeholder="Write something..."></textarea>
@@ -32,9 +47,47 @@ const supabase = window.supabase.createClient(
  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
-let currentUser = crypto.randomUUID(); // simple guest id
+let user=null;
+
+/* ================= AUTH ================= */
+
+async function init(){
+ const { data } = await supabase.auth.getUser();
+ user=data.user;
+ updateUI();
+ loadPosts();
+}
+
+init();
+
+supabase.auth.onAuthStateChange((event,session)=>{
+ user=session?.user||null;
+ updateUI();
+});
+
+googleBtn.onclick=()=>supabase.auth.signInWithOAuth({
+ provider:"google",
+ options:{redirectTo:window.location.origin}
+});
+
+guestBtn.onclick=()=>supabase.auth.signInAnonymously();
+logoutBtn.onclick=()=>supabase.auth.signOut();
+
+function updateUI(){
+ if(user){
+   authSection.style.display="none";
+   userSection.style.display="block";
+   userEmail.innerText=user.email||"Guest";
+ }else{
+   authSection.style.display="block";
+   userSection.style.display="none";
+ }
+}
+
+/* ================= LOAD POSTS ================= */
 
 async function loadPosts(){
+
  const { data } = await supabase
   .from("posts")
   .select("*")
@@ -49,11 +102,17 @@ async function loadPosts(){
      .select("*",{count:"exact",head:true})
      .eq("post_id",post.id);
 
-   const { data:liked } = await supabase
-     .from("likes")
-     .select("id")
-     .eq("post_id",post.id)
-     .eq("user_id",currentUser);
+   let liked=false;
+
+   if(user){
+     const { data } = await supabase
+       .from("likes")
+       .select("id")
+       .eq("post_id",post.id)
+       .eq("user_id",user.id);
+
+     liked=data.length>0;
+   }
 
    const div=document.createElement("div");
    div.className="card";
@@ -61,8 +120,9 @@ async function loadPosts(){
    div.innerHTML=`
      <b>${post.username||"User"}</b>
      <div>${post.content}</div>
-     <button class="like" onclick="toggleLike('${post.id}')">
-       ${liked.length?"Unlike":"Like"} (${count||0})
+     <button class="like"
+       onclick="toggleLike('${post.id}')">
+       ${liked?"Unlike":"Like"} (${count||0})
      </button>
    `;
 
@@ -70,44 +130,55 @@ async function loadPosts(){
  }
 }
 
-async function toggleLike(postId){
-
- const { data } = await supabase
-  .from("likes")
-  .select("id")
-  .eq("post_id",postId)
-  .eq("user_id",currentUser);
-
- if(data.length){
-   await supabase
-    .from("likes")
-    .delete()
-    .eq("post_id",postId)
-    .eq("user_id",currentUser);
- }else{
-   await supabase
-    .from("likes")
-    .insert([{post_id:postId,user_id:currentUser}]);
- }
-
- await loadPosts();
-}
+/* ================= CREATE POST ================= */
 
 postBtn.onclick=async ()=>{
+ if(!user) return alert("Login first");
+
  const content=postInput.value.trim();
  if(!content) return;
 
  await supabase.from("posts").insert([{
    content,
-   username:"Guest"
+   user_id:user.id,
+   username:user.email||"Guest"
  }]);
 
  postInput.value="";
  await loadPosts();
 };
 
-loadPosts();
-setInterval(loadPosts,3000); // auto refresh every 3 seconds
+/* ================= TOGGLE LIKE ================= */
+
+async function toggleLike(postId){
+
+ if(!user) return alert("Login first");
+
+ const { data } = await supabase
+  .from("likes")
+  .select("id")
+  .eq("post_id",postId)
+  .eq("user_id",user.id);
+
+ if(data.length){
+   await supabase
+    .from("likes")
+    .delete()
+    .eq("post_id",postId)
+    .eq("user_id",user.id);
+ }else{
+   await supabase
+    .from("likes")
+    .insert([{post_id:postId,user_id:user.id}]);
+ }
+
+ await loadPosts();
+}
+
+/* Auto refresh every 3 seconds */
+setInterval(()=>{
+ if(user) loadPosts();
+},3000);
 
 </script>
 
