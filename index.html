@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – GitHub Production</title>
+<title>Social App – Final Production</title>
 
 <style>
 body{
@@ -22,10 +22,13 @@ button{
  border:none;
  border-radius:8px;
  cursor:pointer;
- margin-top:10px;
+ margin:6px 6px 0 0;
  font-size:13px;
 }
 .primary{background:#4f46e5;color:white;}
+.google{background:#4285F4;color:white;}
+.guest{background:#6b7280;color:white;}
+.logout{background:#ef4444;color:white;}
 .like-btn{background:#10b981;color:white;}
 textarea{
  width:100%;
@@ -36,7 +39,18 @@ textarea{
 </head>
 <body>
 
-<h2>🔥 Social App – GitHub Production</h2>
+<h2>🔥 Social App – Final Production</h2>
+
+<div class="card">
+<div id="authSection">
+<button id="googleBtn" class="google">Login with Google</button>
+<button id="guestBtn" class="guest">Guest Login</button>
+</div>
+<div id="userSection" style="display:none;">
+<span id="userEmail"></span>
+<button id="logoutBtn" class="logout">Logout</button>
+</div>
+</div>
 
 <div class="card">
 <textarea id="postInput" placeholder="Write something..."></textarea>
@@ -60,11 +74,15 @@ let user = null;
 
 /* ================= INIT ================= */
 async function init(){
+
  const { data } = await supabase.auth.getUser();
  user = data.user;
 
- supabase.auth.onAuthStateChange((e,session)=>{
+ updateAuthUI();
+
+ supabase.auth.onAuthStateChange((event, session)=>{
    user = session?.user || null;
+   updateAuthUI();
  });
 
  await loadPosts();
@@ -72,7 +90,36 @@ async function init(){
 }
 init();
 
+/* ================= AUTH ================= */
+
+document.getElementById("googleBtn").onclick = async ()=>{
+ await supabase.auth.signInWithOAuth({
+   provider: "google"
+ });
+};
+
+document.getElementById("guestBtn").onclick = async ()=>{
+ await supabase.auth.signInAnonymously();
+};
+
+document.getElementById("logoutBtn").onclick = async ()=>{
+ await supabase.auth.signOut();
+};
+
+function updateAuthUI(){
+ if(user){
+   document.getElementById("authSection").style.display="none";
+   document.getElementById("userSection").style.display="block";
+   document.getElementById("userEmail").innerText =
+     user.email || "Guest User";
+ }else{
+   document.getElementById("authSection").style.display="block";
+   document.getElementById("userSection").style.display="none";
+ }
+}
+
 /* ================= CREATE POST ================= */
+
 document.getElementById("postBtn")
 .addEventListener("click", async ()=>{
 
@@ -87,13 +134,14 @@ document.getElementById("postBtn")
  await supabase.from("posts").insert([{
    content,
    user_id:user.id,
-   username:user.email
+   username:user.email || "Guest"
  }]);
 
  document.getElementById("postInput").value="";
 });
 
 /* ================= LOAD POSTS ================= */
+
 async function loadPosts(){
 
  const { data } = await supabase
@@ -109,6 +157,7 @@ async function loadPosts(){
 }
 
 /* ================= RENDER POST ================= */
+
 async function renderPost(post){
 
  if(document.getElementById("post-"+post.id)) return;
@@ -191,7 +240,6 @@ function subscribeRealtime(){
 
  const channel = supabase.channel("social-live");
 
- /* NEW POSTS */
  channel.on(
    "postgres_changes",
    {event:"INSERT",schema:"public",table:"posts"},
@@ -200,7 +248,6 @@ function subscribeRealtime(){
    }
  );
 
- /* LIKE EVENTS */
  channel.on(
    "postgres_changes",
    {event:"*",schema:"public",table:"likes"},
@@ -220,22 +267,10 @@ function subscribeRealtime(){
        .select("*",{count:"exact",head:true})
        .eq("post_id",postId);
 
-     if(payload.eventType === "INSERT"){
-       if(payload.new.user_id === user?.id){
-         btn.innerText = `Unlike (${count||0})`;
-       } else {
-         btn.innerText = `Like (${count||0})`;
-       }
-     }
+     const liked = await didUserLike(postId);
 
-     if(payload.eventType === "DELETE"){
-       if(payload.old.user_id === user?.id){
-         btn.innerText = `Like (${count||0})`;
-       } else {
-         btn.innerText = `Like (${count||0})`;
-       }
-     }
-
+     btn.innerText =
+       `${liked?"Unlike":"Like"} (${count||0})`;
    }
  );
 
