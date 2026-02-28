@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Realtime Stable</title>
+<title>Social App – Stable Final</title>
 
 <style>
 body{
@@ -39,7 +39,7 @@ textarea{
 </head>
 <body>
 
-<h2>🔥 Social App – Realtime Stable</h2>
+<h2>🔥 Social App – Stable Final</h2>
 
 <div class="card">
 <div id="authSection">
@@ -61,6 +61,9 @@ textarea{
 
 <div id="feed"></div>
 
+<!-- IMPORTANT: Supabase library -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <script>
 document.addEventListener("DOMContentLoaded", async ()=>{
 
@@ -74,6 +77,7 @@ let user = null;
 /* ================= INIT ================= */
 
 async function init(){
+
  const { data } = await supabase.auth.getUser();
  user = data.user;
  updateAuthUI();
@@ -99,8 +103,15 @@ googleBtn.onclick = async ()=>{
  });
 };
 
-guestBtn.onclick = ()=> supabase.auth.signInAnonymously();
-logoutBtn.onclick = ()=> supabase.auth.signOut();
+guestBtn.onclick = async ()=>{
+ await supabase.auth.signInAnonymously();
+};
+
+logoutBtn.onclick = async ()=>{
+ await supabase.auth.signOut();
+};
+
+/* ================= UI ================= */
 
 function updateAuthUI(){
  if(user){
@@ -143,7 +154,7 @@ async function loadPosts(){
  data.forEach(post=>renderPost(post));
 }
 
-/* ================= RENDER POST ================= */
+/* ================= RENDER ================= */
 
 async function renderPost(post){
 
@@ -176,7 +187,6 @@ async function getLikeCount(postId){
    .from("likes")
    .select("*",{count:"exact",head:true})
    .eq("post_id",postId);
-
  return count || 0;
 }
 
@@ -192,7 +202,7 @@ async function userLiked(postId){
  return data.length>0;
 }
 
-/* ================= TOGGLE ================= */
+/* ================= TOGGLE LIKE ================= */
 
 window.toggleLike = async function(postId){
 
@@ -217,7 +227,7 @@ window.toggleLike = async function(postId){
  }
 };
 
-/* ================= REALTIME (PROPER FIX) ================= */
+/* ================= REALTIME ================= */
 
 function subscribeRealtime(){
 
