@@ -61,8 +61,6 @@ textarea{
 
 <div id="feed"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
 <script>
 document.addEventListener("DOMContentLoaded", async ()=>{
 
@@ -118,7 +116,6 @@ function updateAuthUI(){
 /* ================= CREATE POST ================= */
 
 postBtn.onclick = async ()=>{
-
  if(!user) return alert("Login first");
 
  const content = postInput.value.trim();
@@ -152,10 +149,8 @@ async function renderPost(post){
 
  if(document.getElementById("post-"+post.id)) return;
 
- const { count } = await supabase
-   .from("likes")
-   .select("*",{count:"exact",head:true})
-   .eq("post_id",post.id);
+ const likeCount = await getLikeCount(post.id);
+ const liked = await userLiked(post.id);
 
  const div = document.createElement("div");
  div.className="card";
@@ -166,23 +161,42 @@ async function renderPost(post){
    <div style="margin-top:8px">${post.content}</div>
    <button class="like-btn"
      id="like-${post.id}"
-     data-count="${count||0}"
-     data-liked="false"
      onclick="toggleLike('${post.id}')">
-     Like (${count||0})
+     ${liked?"Unlike":"Like"} (${likeCount})
    </button>
  `;
 
  feed.prepend(div);
 }
 
-/* ================= TOGGLE LIKE ================= */
+/* ================= HELPERS ================= */
+
+async function getLikeCount(postId){
+ const { count } = await supabase
+   .from("likes")
+   .select("*",{count:"exact",head:true})
+   .eq("post_id",postId);
+
+ return count || 0;
+}
+
+async function userLiked(postId){
+ if(!user) return false;
+
+ const { data } = await supabase
+   .from("likes")
+   .select("id")
+   .eq("post_id",postId)
+   .eq("user_id",user.id);
+
+ return data.length>0;
+}
+
+/* ================= TOGGLE ================= */
 
 window.toggleLike = async function(postId){
 
  if(!user) return alert("Login first");
-
- const btn = document.getElementById("like-"+postId);
 
  const { data } = await supabase
    .from("likes")
@@ -203,13 +217,12 @@ window.toggleLike = async function(postId){
  }
 };
 
-/* ================= REALTIME SYNC ================= */
+/* ================= REALTIME (PROPER FIX) ================= */
 
 function subscribeRealtime(){
 
- const channel = supabase.channel("likes-posts-live");
+ const channel = supabase.channel("social-live");
 
- // NEW POSTS
  channel.on(
    "postgres_changes",
    {event:"INSERT",schema:"public",table:"posts"},
@@ -218,11 +231,10 @@ function subscribeRealtime(){
    }
  );
 
- // LIKE EVENTS
  channel.on(
    "postgres_changes",
    {event:"*",schema:"public",table:"likes"},
-   payload=>{
+   async payload=>{
 
      const postId =
        payload.new?.post_id ||
@@ -235,27 +247,8 @@ function subscribeRealtime(){
 
      if(!btn) return;
 
-     let count =
-       parseInt(btn.dataset.count||0);
-
-     if(payload.eventType==="INSERT"){
-       count++;
-       if(user && payload.new.user_id===user.id){
-         btn.dataset.liked="true";
-       }
-     }
-
-     if(payload.eventType==="DELETE"){
-       count--;
-       if(user && payload.old.user_id===user.id){
-         btn.dataset.liked="false";
-       }
-     }
-
-     btn.dataset.count=count;
-
-     const liked =
-       btn.dataset.liked==="true";
+     const count = await getLikeCount(postId);
+     const liked = await userLiked(postId);
 
      btn.innerText =
        `${liked?"Unlike":"Like"} (${count})`;
