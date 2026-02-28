@@ -2,7 +2,8 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Simple Stable</title>
+<title>Social App – Clean Working</title>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
@@ -19,7 +20,7 @@ textarea{width:100%;padding:8px;border-radius:8px;background:#222;color:white}
 </head>
 <body>
 
-<h2>🔥 Social App – Stable Mode</h2>
+<h2>🔥 Social App – Clean Working</h2>
 
 <div class="card">
 <div id="authSection">
@@ -42,44 +43,60 @@ textarea{width:100%;padding:8px;border-radius:8px;background:#222;color:white}
 <div id="feed"></div>
 
 <script>
-const supabase = window.supabase.createClient(
+
+const { createClient } = supabase;
+
+const supabaseClient = createClient(
  "https://dgehzagvyrxbnnvgsiff.supabase.co",
  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
 let user = null;
 
-/* ================= AUTH ================= */
+/* ================= INIT ================= */
 
 async function init(){
- const { data } = await supabase.auth.getUser();
+ const { data } = await supabaseClient.auth.getUser();
  user = data.user;
  updateUI();
  loadPosts();
 }
+
 init();
 
-supabase.auth.onAuthStateChange((event, session)=>{
+supabaseClient.auth.onAuthStateChange((event, session)=>{
  user = session?.user || null;
  updateUI();
 });
 
-googleBtn.onclick = ()=>supabase.auth.signInWithOAuth({
- provider:"google",
- options:{redirectTo:window.location.origin}
-});
+/* ================= AUTH ================= */
 
-guestBtn.onclick = ()=>supabase.auth.signInAnonymously();
-logoutBtn.onclick = ()=>supabase.auth.signOut();
+document.getElementById("googleBtn").onclick = ()=>{
+ supabaseClient.auth.signInWithOAuth({
+   provider:"google",
+   options:{ redirectTo: window.location.href }
+ });
+};
+
+document.getElementById("guestBtn").onclick = ()=>{
+ supabaseClient.auth.signInAnonymously();
+};
+
+document.getElementById("logoutBtn").onclick = ()=>{
+ supabaseClient.auth.signOut();
+};
+
+/* ================= UI ================= */
 
 function updateUI(){
  if(user){
-   authSection.style.display="none";
-   userSection.style.display="block";
-   userEmail.innerText=user.email || "Guest";
+   document.getElementById("authSection").style.display="none";
+   document.getElementById("userSection").style.display="block";
+   document.getElementById("userEmail").innerText =
+     user.email || "Guest";
  }else{
-   authSection.style.display="block";
-   userSection.style.display="none";
+   document.getElementById("authSection").style.display="block";
+   document.getElementById("userSection").style.display="none";
  }
 }
 
@@ -87,7 +104,7 @@ function updateUI(){
 
 async function loadPosts(){
 
- const { data: posts, error } = await supabase
+ const { data: posts, error } = await supabaseClient
   .from("posts")
   .select("*")
   .order("created_at",{ascending:false});
@@ -97,11 +114,12 @@ async function loadPosts(){
    return;
  }
 
+ const feed = document.getElementById("feed");
  feed.innerHTML="";
 
  for(const post of posts){
 
-   const { count } = await supabase
+   const { count } = await supabaseClient
      .from("likes")
      .select("*",{count:"exact",head:true})
      .eq("post_id",post.id);
@@ -109,7 +127,7 @@ async function loadPosts(){
    let liked=false;
 
    if(user){
-     const { data } = await supabase
+     const { data } = await supabaseClient
        .from("likes")
        .select("id")
        .eq("post_id",post.id)
@@ -136,34 +154,38 @@ async function loadPosts(){
 
 /* ================= CREATE POST ================= */
 
-postBtn.onclick = async ()=>{
+document.getElementById("postBtn").onclick = async ()=>{
+
  if(!user){
    alert("Login first");
    return;
  }
 
- const content = postInput.value.trim();
+ const content = document.getElementById("postInput").value.trim();
+
  if(!content){
    alert("Post empty");
    return;
  }
 
- const { error } = await supabase.from("posts").insert([{
-   content,
-   user_id:user.id,
-   username:user.email || "Guest"
- }]);
+ const { error } = await supabaseClient
+   .from("posts")
+   .insert([{
+     content,
+     user_id:user.id,
+     username:user.email || "Guest"
+   }]);
 
  if(error){
    alert(error.message);
    return;
  }
 
- postInput.value="";
+ document.getElementById("postInput").value="";
  loadPosts();
 };
 
-/* ================= TOGGLE LIKE ================= */
+/* ================= LIKE ================= */
 
 async function toggleLike(postId){
 
@@ -172,35 +194,26 @@ async function toggleLike(postId){
    return;
  }
 
- const { data } = await supabase
+ const { data } = await supabaseClient
   .from("likes")
   .select("id")
   .eq("post_id",postId)
   .eq("user_id",user.id);
 
  if(data.length){
-   await supabase
+   await supabaseClient
     .from("likes")
     .delete()
     .eq("post_id",postId)
     .eq("user_id",user.id);
  }else{
-   await supabase
+   await supabaseClient
     .from("likes")
     .insert([{post_id:postId,user_id:user.id}]);
  }
 
  loadPosts();
 }
-
-/* ================= AUTO REFRESH ================= */
-
-/* Every 5 seconds refresh posts */
-setInterval(()=>{
- if(user){
-   loadPosts();
- }
-},5000);
 
 </script>
 
