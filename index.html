@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Final Production</title>
+<title>Social App – Realtime Production</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -20,7 +20,7 @@ textarea{width:100%;padding:8px;border-radius:8px;}
 </head>
 <body>
 
-<h2>🔥 Social App – Final Production</h2>
+<h2>🔥 Social App – Realtime Production</h2>
 
 <div class="card">
 <div id="authSection">
@@ -50,28 +50,29 @@ const supabase = window.supabase.createClient(
  "sb_publishable_0zcUZcMnYsVKrX0rhxA9Eg_6GwlyzKW"
 );
 
-let user=null;
+let user = null;
 
-/* ================= INIT ================= */
+/* ================= AUTH INIT ================= */
 
 const { data } = await supabase.auth.getUser();
-user=data.user;
+user = data.user;
 updateAuthUI();
 
-supabase.auth.onAuthStateChange((event,session)=>{
- user=session?.user||null;
+supabase.auth.onAuthStateChange((event, session)=>{
+ user = session?.user || null;
  updateAuthUI();
 });
 
 /* ================= AUTH ================= */
 
-googleBtn.onclick=()=>supabase.auth.signInWithOAuth({
- provider:"google",
- options:{redirectTo:window.location.origin}
-});
+googleBtn.onclick = () =>
+ supabase.auth.signInWithOAuth({
+   provider:"google",
+   options:{redirectTo:window.location.origin}
+ });
 
-guestBtn.onclick=()=>supabase.auth.signInAnonymously();
-logoutBtn.onclick=()=>supabase.auth.signOut();
+guestBtn.onclick = () => supabase.auth.signInAnonymously();
+logoutBtn.onclick = () => supabase.auth.signOut();
 
 function updateAuthUI(){
  if(user){
@@ -86,10 +87,10 @@ function updateAuthUI(){
 
 /* ================= CREATE POST ================= */
 
-postBtn.onclick=async ()=>{
+postBtn.onclick = async ()=>{
  if(!user) return alert("Login first");
 
- const content=postInput.value.trim();
+ const content = postInput.value.trim();
  if(!content) return;
 
  await supabase.from("posts").insert([{
@@ -116,22 +117,11 @@ async function loadPosts(){
 }
 await loadPosts();
 
-/* ================= RENDER ================= */
+/* ================= RENDER POST ================= */
 
 async function renderPost(post){
 
  if(document.getElementById("post-"+post.id)) return;
-
- const { count } = await supabase
-  .from("likes")
-  .select("*",{count:"exact",head:true})
-  .eq("post_id",post.id);
-
- const liked = user ? (await supabase
-  .from("likes")
-  .select("id")
-  .eq("post_id",post.id)
-  .eq("user_id",user.id)).data.length>0 : false;
 
  const div=document.createElement("div");
  div.className="card";
@@ -141,36 +131,57 @@ async function renderPost(post){
    <b>${post.username||"User"}</b>
    <div style="margin-top:8px">${post.content}</div>
    <button class="like-btn" id="like-${post.id}">
-     ${liked?"Unlike":"Like"} (${count||0})
+     Loading...
    </button>
  `;
 
  feed.appendChild(div);
 
- document.getElementById("like-"+post.id).onclick=
-  ()=>toggleLike(post.id);
+ document.getElementById("like-"+post.id)
+   .onclick = ()=>toggleLike(post.id);
+
+ await refreshLikeUI(post.id);
 }
 
-/* ================= TOGGLE LIKE (INSTANT) ================= */
+/* ================= REFRESH LIKE UI ================= */
+
+async function refreshLikeUI(postId){
+
+ const btn = document.getElementById("like-"+postId);
+ if(!btn) return;
+
+ const { count } = await supabase
+  .from("likes")
+  .select("*",{count:"exact",head:true})
+  .eq("post_id",postId);
+
+ let liked=false;
+
+ if(user){
+   const { data } = await supabase
+     .from("likes")
+     .select("id")
+     .eq("post_id",postId)
+     .eq("user_id",user.id);
+
+   liked = data.length>0;
+ }
+
+ btn.innerText =
+   `${liked?"Unlike":"Like"} (${count||0})`;
+}
+
+/* ================= TOGGLE LIKE ================= */
 
 async function toggleLike(postId){
 
  if(!user) return alert("Login first");
 
- const btn=document.getElementById("like-"+postId);
+ const btn = document.getElementById("like-"+postId);
  if(!btn) return;
 
- const isUnlike=btn.innerText.startsWith("Unlike");
- let count=parseInt(btn.innerText.match(/\d+/)[0]);
+ btn.disabled = true;
 
- // 🚀 Instant UI update
- if(isUnlike){
-   btn.innerText=`Like (${count-1})`;
- }else{
-   btn.innerText=`Unlike (${count+1})`;
- }
-
- // DB update
  const { data } = await supabase
   .from("likes")
   .select("id")
@@ -186,48 +197,35 @@ async function toggleLike(postId){
    await supabase.from("likes")
     .insert([{post_id:postId,user_id:user.id}]);
  }
+
+ btn.disabled = false;
 }
 
 /* ================= REALTIME ================= */
 
 supabase.channel("live-social")
- .on("postgres_changes",
-   {event:"INSERT",schema:"public",table:"posts"},
-   payload=>{
-     renderPost(payload.new);
-   })
- .on("postgres_changes",
-   {event:"*",schema:"public",table:"likes"},
-   async payload=>{
 
-     const postId=
-       payload.new?.post_id ||
-       payload.old?.post_id;
+.on("postgres_changes",
+ {event:"INSERT",schema:"public",table:"posts"},
+ payload=>{
+   renderPost(payload.new);
+ })
 
-     if(!postId) return;
+.on("postgres_changes",
+ {event:"*",schema:"public",table:"likes"},
+ payload=>{
+   const postId =
+     payload.new?.post_id ||
+     payload.old?.post_id;
 
-     const btn=
-       document.getElementById("like-"+postId);
+   if(postId){
+     refreshLikeUI(postId);
+   }
+ })
 
-     if(!btn) return;
-
-     const { count } = await supabase
-       .from("likes")
-       .select("*",{count:"exact",head:true})
-       .eq("post_id",postId);
-
-     const liked = user ? (await supabase
-       .from("likes")
-       .select("id")
-       .eq("post_id",postId)
-       .eq("user_id",user.id)).data.length>0 : false;
-
-     btn.innerText=
-       `${liked?"Unlike":"Like"} (${count||0})`;
-   })
- .subscribe(status=>{
-   console.log("Realtime:",status);
- });
+.subscribe(status=>{
+ console.log("Realtime:",status);
+});
 
 });
 </script>
