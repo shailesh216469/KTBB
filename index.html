@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Final Stable</title>
+<title>Social App – Production Stable</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -20,7 +20,7 @@ textarea{width:100%;padding:8px;border-radius:8px}
 </head>
 <body>
 
-<h2>🔥 Social App – Final Stable</h2>
+<h2>🔥 Social App – Production Stable</h2>
 
 <div class="card">
 <div id="authSection">
@@ -50,8 +50,6 @@ const supabase = window.supabase.createClient(
 );
 
 let user=null;
-let likeCache={}; // postId -> count
-let likedCache={}; // postId -> true/false
 
 /* ================= AUTH ================= */
 
@@ -120,25 +118,6 @@ async function renderPost(post){
 
  if(document.getElementById("post-"+post.id)) return;
 
- const { count } = await supabase
-   .from("likes")
-   .select("*",{count:"exact",head:true})
-   .eq("post_id",post.id);
-
- likeCache[post.id]=count||0;
-
- likedCache[post.id]=false;
-
- if(user){
-   const { data } = await supabase
-     .from("likes")
-     .select("id")
-     .eq("post_id",post.id)
-     .eq("user_id",user.id);
-
-   likedCache[post.id]=data.length>0;
- }
-
  const div=document.createElement("div");
  div.className="card";
  div.id="post-"+post.id;
@@ -147,7 +126,7 @@ async function renderPost(post){
    <b>${post.username||"User"}</b>
    <div style="margin-top:6px">${post.content}</div>
    <button class="like-btn" id="like-${post.id}">
-     ${likedCache[post.id]?"Unlike":"Like"} (${likeCache[post.id]})
+     Loading...
    </button>
  `;
 
@@ -155,6 +134,36 @@ async function renderPost(post){
 
  document.getElementById("like-"+post.id)
    .onclick=()=>toggleLike(post.id);
+
+ await refreshLike(post.id);
+}
+
+/* ================= REFRESH SINGLE BUTTON ================= */
+
+async function refreshLike(postId){
+
+ const btn=document.getElementById("like-"+postId);
+ if(!btn) return;
+
+ const { count } = await supabase
+   .from("likes")
+   .select("*",{count:"exact",head:true})
+   .eq("post_id",postId);
+
+ let liked=false;
+
+ if(user){
+   const { data } = await supabase
+     .from("likes")
+     .select("id")
+     .eq("post_id",postId)
+     .eq("user_id",user.id);
+
+   liked=data.length>0;
+ }
+
+ btn.innerText=
+   `${liked?"Unlike":"Like"} (${count||0})`;
 }
 
 /* ================= TOGGLE ================= */
@@ -163,7 +172,13 @@ async function toggleLike(postId){
 
  if(!user) return alert("Login first");
 
- if(likedCache[postId]){
+ const { data } = await supabase
+   .from("likes")
+   .select("id")
+   .eq("post_id",postId)
+   .eq("user_id",user.id);
+
+ if(data.length>0){
    await supabase.from("likes")
      .delete()
      .eq("post_id",postId)
@@ -185,38 +200,20 @@ supabase.channel("live")
  })
 
 .on("postgres_changes",
- {event:"INSERT",schema:"public",table:"likes"},
+ {event:"*",schema:"public",table:"likes"},
  payload=>{
-   const postId=payload.new.post_id;
-   likeCache[postId]=(likeCache[postId]||0)+1;
+   const postId=
+     payload.new?.post_id ||
+     payload.old?.post_id;
 
-   if(user && payload.new.user_id===user.id)
-     likedCache[postId]=true;
-
-   updateButton(postId);
+   if(postId){
+     refreshLike(postId);
+   }
  })
 
-.on("postgres_changes",
- {event:"DELETE",schema:"public",table:"likes"},
- payload=>{
-   const postId=payload.old.post_id;
-   likeCache[postId]=Math.max((likeCache[postId]||1)-1,0);
-
-   if(user && payload.old.user_id===user.id)
-     likedCache[postId]=false;
-
-   updateButton(postId);
- })
-
-.subscribe();
-
-function updateButton(postId){
- const btn=document.getElementById("like-"+postId);
- if(!btn) return;
-
- btn.innerText=
-   `${likedCache[postId]?"Unlike":"Like"} (${likeCache[postId]||0})`;
-}
+.subscribe(status=>{
+ console.log("Realtime:",status);
+});
 
 });
 </script>
