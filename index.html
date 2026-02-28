@@ -61,7 +61,6 @@ async function init(){
  updateUI();
  loadPosts();
 }
-
 init();
 
 supabaseClient.auth.onAuthStateChange((event, session)=>{
@@ -71,18 +70,18 @@ supabaseClient.auth.onAuthStateChange((event, session)=>{
 
 /* ================= AUTH ================= */
 
-document.getElementById("googleBtn").onclick = ()=>{
+googleBtn.onclick = ()=>{
  supabaseClient.auth.signInWithOAuth({
    provider:"google",
    options:{ redirectTo: window.location.href }
  });
 };
 
-document.getElementById("guestBtn").onclick = ()=>{
+guestBtn.onclick = ()=>{
  supabaseClient.auth.signInAnonymously();
 };
 
-document.getElementById("logoutBtn").onclick = ()=>{
+logoutBtn.onclick = ()=>{
  supabaseClient.auth.signOut();
 };
 
@@ -90,13 +89,12 @@ document.getElementById("logoutBtn").onclick = ()=>{
 
 function updateUI(){
  if(user){
-   document.getElementById("authSection").style.display="none";
-   document.getElementById("userSection").style.display="block";
-   document.getElementById("userEmail").innerText =
-     user.email || "Guest";
+   authSection.style.display="none";
+   userSection.style.display="block";
+   userEmail.innerText = user.email || "Guest";
  }else{
-   document.getElementById("authSection").style.display="block";
-   document.getElementById("userSection").style.display="none";
+   authSection.style.display="block";
+   userSection.style.display="none";
  }
 }
 
@@ -114,61 +112,67 @@ async function loadPosts(){
    return;
  }
 
- const feed = document.getElementById("feed");
  feed.innerHTML="";
 
  for(const post of posts){
-
-   const { count } = await supabaseClient
-     .from("likes")
-     .select("*",{count:"exact",head:true})
-     .eq("post_id",post.id);
-
-   let liked=false;
-
-   if(user){
-     const { data } = await supabaseClient
-       .from("likes")
-       .select("id")
-       .eq("post_id",post.id)
-       .eq("user_id",user.id);
-
-     liked = data.length>0;
-   }
-
-   const div=document.createElement("div");
-   div.className="card";
-
-   div.innerHTML=`
-     <b>${post.username || "User"}</b>
-     <div>${post.content}</div>
-     <button class="like"
-       onclick="toggleLike('${post.id}')">
-       ${liked?"Unlike":"Like"} (${count||0})
-     </button>
-   `;
-
-   feed.appendChild(div);
+   renderPost(post);
  }
+}
+
+/* ================= RENDER POST ================= */
+
+async function renderPost(post){
+
+ const { count } = await supabaseClient
+   .from("likes")
+   .select("*",{count:"exact",head:true})
+   .eq("post_id",post.id);
+
+ let liked=false;
+
+ if(user){
+   const { data } = await supabaseClient
+     .from("likes")
+     .select("id")
+     .eq("post_id",post.id)
+     .eq("user_id",user.id);
+
+   liked = data.length>0;
+ }
+
+ const div=document.createElement("div");
+ div.className="card";
+ div.id="post-"+post.id;
+
+ div.innerHTML=`
+   <b>${post.username || "User"}</b>
+   <div>${post.content}</div>
+   <button class="like"
+     id="like-${post.id}"
+     onclick="toggleLike('${post.id}')">
+     ${liked?"Unlike":"Like"} (${count||0})
+   </button>
+ `;
+
+ feed.appendChild(div);
 }
 
 /* ================= CREATE POST ================= */
 
-document.getElementById("postBtn").onclick = async ()=>{
+postBtn.onclick = async ()=>{
 
  if(!user){
    alert("Login first");
    return;
  }
 
- const content = document.getElementById("postInput").value.trim();
-
+ const content = postInput.value.trim();
  if(!content){
    alert("Post empty");
    return;
  }
 
- const { error } = await supabaseClient
+ await supabaseClient
    .from("posts")
    .insert([{
      content,
@@ -176,16 +180,11 @@ document.getElementById("postBtn").onclick = async ()=>{
      username:user.email || "Guest"
    }]);
 
- if(error){
-   alert(error.message);
-   return;
- }
-
- document.getElementById("postInput").value="";
+ postInput.value="";
  loadPosts();
 };
 
-/* ================= LIKE ================= */
+/* ================= LIKE (NO FEED RELOAD) ================= */
 
 async function toggleLike(postId){
 
@@ -194,6 +193,9 @@ async function toggleLike(postId){
    return;
  }
 
+ const btn = document.getElementById("like-"+postId);
+
+ // check if liked
  const { data } = await supabaseClient
   .from("likes")
   .select("id")
@@ -212,7 +214,22 @@ async function toggleLike(postId){
     .insert([{post_id:postId,user_id:user.id}]);
  }
 
- loadPosts();
+ // 🔥 update only this button
+
+ const { count } = await supabaseClient
+   .from("likes")
+   .select("*",{count:"exact",head:true})
+   .eq("post_id",postId);
+
+ const { data: check } = await supabaseClient
+   .from("likes")
+   .select("id")
+   .eq("post_id",postId)
+   .eq("user_id",user.id);
+
+ const liked = check.length>0;
+
+ btn.innerText = `${liked?"Unlike":"Like"} (${count||0})`;
 }
 
 </script>
