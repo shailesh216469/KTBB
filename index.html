@@ -53,7 +53,7 @@ const supabaseClient = createClient(
 );
 
 let user = null;
-let cache = {}; // 🔥 store post state locally
+let cache = {};
 
 /* ================= INIT ================= */
 
@@ -120,7 +120,6 @@ async function fullSync(){
      liked: user ? users.includes(user.id) : false
    };
 
-   // 🔥 only update if changed
    if(!cache[post.id] ||
       cache[post.id].content !== state.content ||
       cache[post.id].likeCount !== state.likeCount ||
@@ -187,7 +186,7 @@ function startEdit(postId){
  document.getElementById("content-"+postId).innerHTML = `
    <textarea id="edit-${postId}">${oldText}</textarea>
    <button class="primary" onclick="saveEdit('${postId}')">Save</button>
-   <button class="cancel" onclick="fullSync()">Cancel</button>
+   <button class="cancel" onclick="cancelEdit('${postId}')">Cancel</button>
  `;
 }
 
@@ -202,6 +201,12 @@ async function saveEdit(postId){
    .eq("id",postId);
 
  await fullSync();
+}
+
+function cancelEdit(postId){
+ // 🔥 restore from cache without reload
+ const oldText = cache[postId].content;
+ document.getElementById("content-"+postId).innerText = oldText;
 }
 
 /* ================= LIKE ================= */
