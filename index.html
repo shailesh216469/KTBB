@@ -209,7 +209,7 @@ async function toggleLike(postId){
     .insert([{post_id:postId,user_id:user.id}]);
  }
 
- // Update only this post
+ // Refresh only this post
  const { data: post } = await supabaseClient
   .from("posts")
   .select("*")
@@ -221,23 +221,41 @@ async function toggleLike(postId){
  }
 }
 
-/* ================= SMART SYNC ================= */
+/* ================= SMART SYNC (POST + LIKE) ================= */
 
 async function smartSync(){
 
+ // Check new posts
  const { data: posts } = await supabaseClient
   .from("posts")
   .select("*")
   .order("created_at",{ascending:false})
   .limit(5);
 
- if(!posts) return;
+ if(posts){
+   for(const post of posts){
+     if(!knownPostIds.has(post.id)){
+       knownPostIds.add(post.id);
+       renderPost(post,true);
+     }
+   }
+ }
 
- for(const post of posts){
+ // Update likes for visible posts
+ const visiblePosts = document.querySelectorAll("[id^='post-']");
 
-   if(!knownPostIds.has(post.id)){
-     knownPostIds.add(post.id);
-     renderPost(post,true);
+ for(const postEl of visiblePosts){
+
+   const postId = postEl.id.replace("post-","");
+
+   const { data: post } = await supabaseClient
+    .from("posts")
+    .select("*")
+    .eq("id",postId)
+    .single();
+
+   if(post){
+     renderPost(post);
    }
  }
 }
