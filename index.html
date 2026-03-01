@@ -101,12 +101,52 @@ async function initialLoad(){
   .select("*")
   .order("created_at",{ascending:false});
 
+ const { data: likes } = await supabaseClient
+  .from("likes")
+  .select("*");
+
  feed.innerHTML="";
  knownPostIds.clear();
 
+ const likeMap = {};
+
+ // Count likes per post
+ likes.forEach(l=>{
+   if(!likeMap[l.post_id]){
+     likeMap[l.post_id] = {
+       count:0,
+       users:[]
+     };
+   }
+   likeMap[l.post_id].count++;
+   likeMap[l.post_id].users.push(l.user_id);
+ });
+
  for(const post of posts){
+
    knownPostIds.add(post.id);
-   await renderPost(post,true);
+
+   const likeData = likeMap[post.id] || {count:0, users:[]};
+
+   const liked = user
+     ? likeData.users.includes(user.id)
+     : false;
+
+   const div=document.createElement("div");
+   div.className="card";
+   div.id="post-"+post.id;
+
+   div.innerHTML=`
+     <b>${post.username || "User"}</b>
+     <div>${post.content}</div>
+     <button class="like"
+       id="like-${post.id}"
+       onclick="toggleLike('${post.id}')">
+       ${liked?"Unlike":"Like"} (${likeData.count})
+     </button>
+   `;
+
+   feed.appendChild(div);
  }
 }
 
