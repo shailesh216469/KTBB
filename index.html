@@ -15,6 +15,8 @@ button{padding:6px 12px;border:none;border-radius:8px;margin-top:8px;cursor:poin
 .google{background:#4285F4;color:white}
 .guest{background:#6b7280;color:white}
 .logout{background:#ef4444;color:white}
+.edit{background:#f59e0b;color:white}
+.cancel{background:#6b7280;color:white}
 textarea{width:100%;padding:8px;border-radius:8px;background:#222;color:white}
 </style>
 </head>
@@ -110,76 +112,46 @@ async function initialLoad(){
 
  const likeMap = {};
 
- // Count likes per post
  likes.forEach(l=>{
    if(!likeMap[l.post_id]){
-     likeMap[l.post_id] = {
-       count:0,
-       users:[]
-     };
+     likeMap[l.post_id] = {count:0, users:[]};
    }
    likeMap[l.post_id].count++;
    likeMap[l.post_id].users.push(l.user_id);
  });
 
  for(const post of posts){
-
    knownPostIds.add(post.id);
-
-   const likeData = likeMap[post.id] || {count:0, users:[]};
-
-   const liked = user
-     ? likeData.users.includes(user.id)
-     : false;
-
-   const div=document.createElement("div");
-   div.className="card";
-   div.id="post-"+post.id;
-
-   div.innerHTML=`
-     <b>${post.username || "User"}</b>
-     <div>${post.content}</div>
-     <button class="like"
-       id="like-${post.id}"
-       onclick="toggleLike('${post.id}')">
-       ${liked?"Unlike":"Like"} (${likeData.count})
-     </button>
-   `;
-
-   feed.appendChild(div);
+   renderPost(post,true,likeMap);
  }
 }
 
 /* ================= RENDER POST ================= */
 
-async function renderPost(post, prepend=false){
+function renderPost(post, prepend=false, likeMap=null){
 
- const { count } = await supabaseClient
-   .from("likes")
-   .select("*",{count:"exact",head:true})
-   .eq("post_id",post.id);
-
- let liked=false;
-
- if(user){
-   const { data } = await supabaseClient
-     .from("likes")
-     .select("id")
-     .eq("post_id",post.id)
-     .eq("user_id",user.id);
-
-   liked = data.length>0;
- }
+ const likeData = likeMap
+   ? (likeMap[post.id] || {count:0, users:[]})
+   : null;
 
  let existing = document.getElementById("post-"+post.id);
 
+ const liked = likeData
+   ? (user ? likeData.users.includes(user.id) : false)
+   : false;
+
+ const likeCount = likeData ? likeData.count : 0;
+
+ const isOwner = user && user.id === post.user_id;
+
  const html = `
    <b>${post.username || "User"}</b>
-   <div>${post.content}</div>
+   <div id="content-${post.id}">${post.content}</div>
+   ${isOwner ? `<button class="edit" onclick="startEdit('${post.id}')">Edit</button>` : ""}
    <button class="like"
      id="like-${post.id}"
      onclick="toggleLike('${post.id}')">
-     ${liked?"Unlike":"Like"} (${count||0})
+     ${liked?"Unlike":"Like"} (${likeCount})
    </button>
  `;
 
@@ -197,6 +169,45 @@ async function renderPost(post, prepend=false){
      feed.appendChild(div);
    }
  }
+}
+
+/* ================= EDIT POST ================= */
+
+function startEdit(postId){
+
+ const contentDiv = document.getElementById("content-"+postId);
+ const oldText = contentDiv.innerText;
+
+ contentDiv.innerHTML = `
+   <textarea id="edit-${postId}">${oldText}</textarea>
+   <button class="primary" onclick="saveEdit('${postId}')">Save</button>
+   <button class="cancel" onclick="cancelEdit('${postId}','${oldText}')">Cancel</button>
+ `;
+}
+
+async function saveEdit(postId){
+
+ const newContent = document.getElementById("edit-"+postId).value.trim();
+ if(!newContent) return alert("Content empty");
+
+ await supabaseClient
+   .from("posts")
+   .update({content:newContent})
+   .eq("id",postId);
+
+ const { data: post } = await supabaseClient
+   .from("posts")
+   .select("*")
+   .eq("id",postId)
+   .single();
+
+ if(post){
+   renderPost(post);
+ }
+}
+
+function cancelEdit(postId, oldText){
+ document.getElementById("content-"+postId).innerHTML = oldText;
 }
 
 /* ================= CREATE POST ================= */
@@ -249,7 +260,6 @@ async function toggleLike(postId){
     .insert([{post_id:postId,user_id:user.id}]);
  }
 
- // Refresh only this post
  const { data: post } = await supabaseClient
   .from("posts")
   .select("*")
@@ -261,11 +271,10 @@ async function toggleLike(postId){
  }
 }
 
-/* ================= SMART SYNC (POST + LIKE) ================= */
+/* ================= SMART SYNC ================= */
 
 async function smartSync(){
 
- // Check new posts
  const { data: posts } = await supabaseClient
   .from("posts")
   .select("*")
@@ -278,24 +287,6 @@ async function smartSync(){
        knownPostIds.add(post.id);
        renderPost(post,true);
      }
-   }
- }
-
- // Update likes for visible posts
- const visiblePosts = document.querySelectorAll("[id^='post-']");
-
- for(const postEl of visiblePosts){
-
-   const postId = postEl.id.replace("post-","");
-
-   const { data: post } = await supabaseClient
-    .from("posts")
-    .select("*")
-    .eq("id",postId)
-    .single();
-
-   if(post){
-     renderPost(post);
    }
  }
 }
