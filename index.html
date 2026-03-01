@@ -195,7 +195,6 @@ async function toggleLike(postId){
 
  const btn = document.getElementById("like-"+postId);
 
- // check if liked
  const { data } = await supabaseClient
   .from("likes")
   .select("id")
@@ -214,8 +213,6 @@ async function toggleLike(postId){
     .insert([{post_id:postId,user_id:user.id}]);
  }
 
- // 🔥 update only this button
-
  const { count } = await supabaseClient
    .from("likes")
    .select("*",{count:"exact",head:true})
@@ -231,6 +228,14 @@ async function toggleLike(postId){
 
  btn.innerText = `${liked?"Unlike":"Like"} (${count||0})`;
 }
+
+/* ================= AUTO SYNC EVERY 5 SECONDS ================= */
+
+setInterval(()=>{
+ if(user){
+   loadPosts();
+ }
+},5000);
 
 </script>
 
