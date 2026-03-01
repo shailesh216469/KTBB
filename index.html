@@ -2,8 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Smooth Sync + Edit</title>
-
+<title>Social App – Final Stable Sync</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
@@ -22,7 +21,7 @@ textarea{width:100%;padding:8px;border-radius:8px;background:#222;color:white}
 </head>
 <body>
 
-<h2>🔥 Social App – Smooth Sync + Edit</h2>
+<h2>🔥 Social App – Final Stable Sync</h2>
 
 <div class="card">
 <div id="authSection">
@@ -54,7 +53,7 @@ const supabaseClient = createClient(
 );
 
 let user = null;
-let knownPostIds = new Set();
+let cache = {}; // 🔥 store post state locally
 
 /* ================= INIT ================= */
 
@@ -62,7 +61,7 @@ async function init(){
  const { data } = await supabaseClient.auth.getUser();
  user = data.user;
  updateUI();
- await loadAll();
+ await fullSync();
 }
 init();
 
@@ -84,19 +83,14 @@ guestBtn.onclick = ()=> supabaseClient.auth.signInAnonymously();
 logoutBtn.onclick = ()=> supabaseClient.auth.signOut();
 
 function updateUI(){
- if(user){
-   authSection.style.display="none";
-   userSection.style.display="block";
-   userEmail.innerText = user.email || "Guest";
- }else{
-   authSection.style.display="block";
-   userSection.style.display="none";
- }
+ authSection.style.display = user ? "none" : "block";
+ userSection.style.display = user ? "block" : "none";
+ userEmail.innerText = user?.email || "Guest";
 }
 
-/* ================= LOAD ALL (FAST) ================= */
+/* ================= FULL SYNC ================= */
 
-async function loadAll(){
+async function fullSync(){
 
  const { data: posts } = await supabaseClient
   .from("posts")
@@ -107,60 +101,62 @@ async function loadAll(){
   .from("likes")
   .select("*");
 
- feed.innerHTML="";
- knownPostIds.clear();
+ if(!posts) return;
 
  const likeMap = {};
 
  likes.forEach(l=>{
    if(!likeMap[l.post_id]){
-     likeMap[l.post_id] = {count:0, users:[]};
+     likeMap[l.post_id] = [];
    }
-   likeMap[l.post_id].count++;
-   likeMap[l.post_id].users.push(l.user_id);
+   likeMap[l.post_id].push(l.user_id);
  });
 
- for(const post of posts){
-   knownPostIds.add(post.id);
-   renderPost(post, likeMap);
- }
+ posts.forEach(post=>{
+   const users = likeMap[post.id] || [];
+   const state = {
+     content: post.content,
+     likeCount: users.length,
+     liked: user ? users.includes(user.id) : false
+   };
+
+   // 🔥 only update if changed
+   if(!cache[post.id] ||
+      cache[post.id].content !== state.content ||
+      cache[post.id].likeCount !== state.likeCount ||
+      cache[post.id].liked !== state.liked){
+
+        renderPost(post,state);
+        cache[post.id] = state;
+   }
+ });
 }
 
 /* ================= RENDER POST ================= */
 
-function renderPost(post, likeMap=null){
+function renderPost(post,state){
 
- const existing = document.getElementById("post-"+post.id);
-
- let likeCount = 0;
- let liked = false;
-
- if(likeMap){
-   const data = likeMap[post.id] || {count:0, users:[]};
-   likeCount = data.count;
-   liked = user ? data.users.includes(user.id) : false;
- }
+ let div = document.getElementById("post-"+post.id);
 
  const isOwner = user && user.id === post.user_id;
 
  const html = `
    <b>${post.username || "User"}</b>
-   <div id="content-${post.id}">${post.content}</div>
+   <div id="content-${post.id}">${state.content}</div>
    ${isOwner ? `<button class="edit" onclick="startEdit('${post.id}')">Edit</button>` : ""}
    <button class="like"
-     id="like-${post.id}"
      onclick="toggleLike('${post.id}')">
-     ${liked?"Unlike":"Like"} (${likeCount})
+     ${state.liked?"Unlike":"Like"} (${state.likeCount})
    </button>
  `;
 
- if(existing){
-   existing.innerHTML = html;
+ if(div){
+   div.innerHTML = html;
  } else {
-   const div=document.createElement("div");
+   div = document.createElement("div");
    div.className="card";
    div.id="post-"+post.id;
-   div.innerHTML=html;
+   div.innerHTML = html;
    feed.appendChild(div);
  }
 }
@@ -168,66 +164,44 @@ function renderPost(post, likeMap=null){
 /* ================= CREATE POST ================= */
 
 postBtn.onclick = async ()=>{
-
  if(!user) return alert("Login first");
-
  const content = postInput.value.trim();
  if(!content) return alert("Post empty");
 
- const { data } = await supabaseClient
-   .from("posts")
-   .insert([{
-     content,
-     user_id:user.id,
-     username:user.email || "Guest"
-   }])
-   .select();
+ await supabaseClient.from("posts").insert([{
+   content,
+   user_id:user.id,
+   username:user.email || "Guest"
+ }]);
 
  postInput.value="";
-
- if(data && data[0]){
-   knownPostIds.add(data[0].id);
-   renderPost(data[0]);
- }
+ await fullSync();
 };
 
-/* ================= EDIT POST ================= */
+/* ================= EDIT ================= */
 
 function startEdit(postId){
 
- const contentDiv = document.getElementById("content-"+postId);
- const oldText = contentDiv.innerText;
+ const oldText = cache[postId].content;
 
- contentDiv.innerHTML = `
+ document.getElementById("content-"+postId).innerHTML = `
    <textarea id="edit-${postId}">${oldText}</textarea>
    <button class="primary" onclick="saveEdit('${postId}')">Save</button>
-   <button class="cancel" onclick="cancelEdit('${postId}', \`${oldText}\`)">Cancel</button>
+   <button class="cancel" onclick="fullSync()">Cancel</button>
  `;
 }
 
 async function saveEdit(postId){
 
  const newContent = document.getElementById("edit-"+postId).value.trim();
- if(!newContent) return alert("Content empty");
+ if(!newContent) return alert("Empty");
 
  await supabaseClient
    .from("posts")
    .update({content:newContent})
    .eq("id",postId);
 
- const { data: post } = await supabaseClient
-   .from("posts")
-   .select("*")
-   .eq("id",postId)
-   .single();
-
- if(post){
-   renderPost(post);
- }
-}
-
-function cancelEdit(postId, oldText){
- document.getElementById("content-"+postId).innerText = oldText;
+ await fullSync();
 }
 
 /* ================= LIKE ================= */
@@ -254,34 +228,16 @@ async function toggleLike(postId){
     .insert([{post_id:postId,user_id:user.id}]);
  }
 
- loadAll(); // keep counts correct
+ await fullSync();
 }
 
-/* ================= SMART SYNC ================= */
-
-async function smartSync(){
-
- const { data: posts } = await supabaseClient
-  .from("posts")
-  .select("*")
-  .order("created_at",{ascending:false})
-  .limit(5);
-
- if(posts){
-   for(const post of posts){
-     if(!knownPostIds.has(post.id)){
-       knownPostIds.add(post.id);
-       renderPost(post);
-     }
-   }
- }
-}
+/* ================= AUTO SYNC ================= */
 
 setInterval(()=>{
  if(user){
-   smartSync();
+   fullSync();
  }
-},4000);
+},3000);
 
 </script>
 
