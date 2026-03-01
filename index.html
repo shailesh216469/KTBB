@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Edited Badge</title>
+<title>Social App – Edited Tooltip</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
@@ -16,13 +16,13 @@ button{padding:6px 12px;border:none;border-radius:8px;margin-top:8px;cursor:poin
 .logout{background:#ef4444;color:white}
 .edit{background:#f59e0b;color:white}
 .cancel{background:#6b7280;color:white}
-.edited{font-size:12px;color:#9ca3af;margin-left:6px}
+.edited{font-size:12px;color:#9ca3af;margin-left:6px;cursor:pointer}
 textarea{width:100%;padding:8px;border-radius:8px;background:#222;color:white}
 </style>
 </head>
 <body>
 
-<h2>🔥 Social App – Edited Badge</h2>
+<h2>🔥 Social App – Edited Tooltip</h2>
 
 <div class="card">
 <div id="authSection">
@@ -56,8 +56,6 @@ const supabaseClient = createClient(
 let user = null;
 let cache = {};
 
-/* ================= INIT ================= */
-
 async function init(){
  const { data } = await supabaseClient.auth.getUser();
  user = data.user;
@@ -70,8 +68,6 @@ supabaseClient.auth.onAuthStateChange((event, session)=>{
  user = session?.user || null;
  updateUI();
 });
-
-/* ================= AUTH ================= */
 
 googleBtn.onclick = ()=>{
  supabaseClient.auth.signInWithOAuth({
@@ -89,7 +85,14 @@ function updateUI(){
  userEmail.innerText = user?.email || "Guest";
 }
 
-/* ================= FULL SYNC ================= */
+/* ========= FORMAT DATE ========= */
+
+function formatDate(dateString){
+ const d = new Date(dateString);
+ return d.toLocaleString();
+}
+
+/* ========= FULL SYNC ========= */
 
 async function fullSync(){
 
@@ -114,6 +117,7 @@ async function fullSync(){
  });
 
  posts.forEach(post=>{
+
    const users = likeMap[post.id] || [];
 
    const edited = post.updated_at &&
@@ -123,7 +127,8 @@ async function fullSync(){
      content: post.content,
      likeCount: users.length,
      liked: user ? users.includes(user.id) : false,
-     edited: edited
+     edited: edited,
+     editTime: edited ? formatDate(post.updated_at) : null
    };
 
    if(!cache[post.id] ||
@@ -135,7 +140,7 @@ async function fullSync(){
  });
 }
 
-/* ================= RENDER POST ================= */
+/* ========= RENDER ========= */
 
 function renderPost(post,state){
 
@@ -144,7 +149,11 @@ function renderPost(post,state){
 
  const html = `
    <b>${post.username || "User"}</b>
-   ${state.edited ? `<span class="edited">(edited)</span>` : ""}
+   ${state.edited ? 
+     `<span class="edited" title="Edited at ${state.editTime}">
+       (edited)
+     </span>` 
+   : ""}
    <div id="content-${post.id}">${state.content}</div>
    ${isOwner ? `<button class="edit" onclick="startEdit('${post.id}')">Edit</button>` : ""}
    <button class="like" onclick="toggleLike('${post.id}')">
@@ -163,7 +172,7 @@ function renderPost(post,state){
  }
 }
 
-/* ================= CREATE POST ================= */
+/* ========= CREATE ========= */
 
 postBtn.onclick = async ()=>{
  if(!user) return alert("Login first");
@@ -180,7 +189,7 @@ postBtn.onclick = async ()=>{
  await fullSync();
 };
 
-/* ================= EDIT ================= */
+/* ========= EDIT ========= */
 
 function startEdit(postId){
 
@@ -210,7 +219,7 @@ function cancelEdit(postId){
  document.getElementById("content-"+postId).innerText = cache[postId].content;
 }
 
-/* ================= LIKE ================= */
+/* ========= LIKE ========= */
 
 async function toggleLike(postId){
 
@@ -237,7 +246,7 @@ async function toggleLike(postId){
  await fullSync();
 }
 
-/* ================= AUTO SYNC ================= */
+/* ========= AUTO SYNC ========= */
 
 setInterval(()=>{
  if(user){
