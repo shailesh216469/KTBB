@@ -2,12 +2,12 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Edited Tooltip</title>
+<title>Social App – Animated Tooltip</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
 body{font-family:system-ui;background:#111;color:white;padding:20px}
-.card{background:#1f1f1f;padding:16px;border-radius:12px;margin-top:15px}
+.card{background:#1f1f1f;padding:16px;border-radius:12px;margin-top:15px;position:relative}
 button{padding:6px 12px;border:none;border-radius:8px;margin-top:8px;cursor:pointer}
 .like{background:#10b981;color:white}
 .primary{background:#4f46e5;color:white}
@@ -16,13 +16,41 @@ button{padding:6px 12px;border:none;border-radius:8px;margin-top:8px;cursor:poin
 .logout{background:#ef4444;color:white}
 .edit{background:#f59e0b;color:white}
 .cancel{background:#6b7280;color:white}
-.edited{font-size:12px;color:#9ca3af;margin-left:6px;cursor:pointer}
 textarea{width:100%;padding:8px;border-radius:8px;background:#222;color:white}
+
+/* 🔥 Animated Tooltip */
+.edited{
+ font-size:12px;
+ color:#9ca3af;
+ margin-left:6px;
+ cursor:pointer;
+ position:relative;
+}
+
+.tooltip{
+ position:absolute;
+ bottom:120%;
+ left:0;
+ background:#000;
+ padding:6px 10px;
+ border-radius:6px;
+ font-size:12px;
+ white-space:nowrap;
+ opacity:0;
+ transform:translateY(5px);
+ transition:all .2s ease;
+ pointer-events:none;
+}
+
+.edited:hover .tooltip{
+ opacity:1;
+ transform:translateY(0);
+}
 </style>
 </head>
 <body>
 
-<h2>🔥 Social App – Edited Tooltip</h2>
+<h2>🔥 Social App – Animated Tooltip</h2>
 
 <div class="card">
 <div id="authSection">
@@ -85,11 +113,8 @@ function updateUI(){
  userEmail.innerText = user?.email || "Guest";
 }
 
-/* ========= FORMAT DATE ========= */
-
 function formatDate(dateString){
- const d = new Date(dateString);
- return d.toLocaleString();
+ return new Date(dateString).toLocaleString();
 }
 
 /* ========= FULL SYNC ========= */
@@ -119,9 +144,7 @@ async function fullSync(){
  posts.forEach(post=>{
 
    const users = likeMap[post.id] || [];
-
-   const edited = post.updated_at &&
-                  post.updated_at !== post.created_at;
+   const edited = post.updated_at && post.updated_at !== post.created_at;
 
    const state = {
      content: post.content,
@@ -147,13 +170,16 @@ function renderPost(post,state){
  let div = document.getElementById("post-"+post.id);
  const isOwner = user && user.id === post.user_id;
 
+ const editedHTML = state.edited ? `
+   <span class="edited">
+     (edited)
+     <span class="tooltip">Edited at ${state.editTime}</span>
+   </span>
+ ` : "";
+
  const html = `
    <b>${post.username || "User"}</b>
-   ${state.edited ? 
-     `<span class="edited" title="Edited at ${state.editTime}">
-       (edited)
-     </span>` 
-   : ""}
+   ${editedHTML}
    <div id="content-${post.id}">${state.content}</div>
    ${isOwner ? `<button class="edit" onclick="startEdit('${post.id}')">Edit</button>` : ""}
    <button class="like" onclick="toggleLike('${post.id}')">
@@ -192,9 +218,7 @@ postBtn.onclick = async ()=>{
 /* ========= EDIT ========= */
 
 function startEdit(postId){
-
  const oldText = cache[postId].content;
-
  document.getElementById("content-"+postId).innerHTML = `
    <textarea id="edit-${postId}">${oldText}</textarea>
    <button class="primary" onclick="saveEdit('${postId}')">Save</button>
@@ -203,7 +227,6 @@ function startEdit(postId){
 }
 
 async function saveEdit(postId){
-
  const newContent = document.getElementById("edit-"+postId).value.trim();
  if(!newContent) return alert("Empty");
 
