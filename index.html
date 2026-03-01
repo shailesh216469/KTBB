@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Smooth Sync</title>
+<title>Social App – Smooth Sync + Edit</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -22,7 +22,7 @@ textarea{width:100%;padding:8px;border-radius:8px;background:#222;color:white}
 </head>
 <body>
 
-<h2>🔥 Social App – Smooth Sync</h2>
+<h2>🔥 Social App – Smooth Sync + Edit</h2>
 
 <div class="card">
 <div id="authSection">
@@ -62,7 +62,7 @@ async function init(){
  const { data } = await supabaseClient.auth.getUser();
  user = data.user;
  updateUI();
- await initialLoad();
+ await loadAll();
 }
 init();
 
@@ -94,9 +94,9 @@ function updateUI(){
  }
 }
 
-/* ================= INITIAL LOAD ================= */
+/* ================= LOAD ALL (FAST) ================= */
 
-async function initialLoad(){
+async function loadAll(){
 
  const { data: posts } = await supabaseClient
   .from("posts")
@@ -122,25 +122,24 @@ async function initialLoad(){
 
  for(const post of posts){
    knownPostIds.add(post.id);
-   renderPost(post,true,likeMap);
+   renderPost(post, likeMap);
  }
 }
 
 /* ================= RENDER POST ================= */
 
-function renderPost(post, prepend=false, likeMap=null){
+function renderPost(post, likeMap=null){
 
- const likeData = likeMap
-   ? (likeMap[post.id] || {count:0, users:[]})
-   : null;
+ const existing = document.getElementById("post-"+post.id);
 
- let existing = document.getElementById("post-"+post.id);
+ let likeCount = 0;
+ let liked = false;
 
- const liked = likeData
-   ? (user ? likeData.users.includes(user.id) : false)
-   : false;
-
- const likeCount = likeData ? likeData.count : 0;
+ if(likeMap){
+   const data = likeMap[post.id] || {count:0, users:[]};
+   likeCount = data.count;
+   liked = user ? data.users.includes(user.id) : false;
+ }
 
  const isOwner = user && user.id === post.user_id;
 
@@ -162,14 +161,35 @@ function renderPost(post, prepend=false, likeMap=null){
    div.className="card";
    div.id="post-"+post.id;
    div.innerHTML=html;
-
-   if(prepend){
-     feed.prepend(div);
-   }else{
-     feed.appendChild(div);
-   }
+   feed.appendChild(div);
  }
 }
+
+/* ================= CREATE POST ================= */
+
+postBtn.onclick = async ()=>{
+
+ if(!user) return alert("Login first");
+
+ const content = postInput.value.trim();
+ if(!content) return alert("Post empty");
+
+ const { data } = await supabaseClient
+   .from("posts")
+   .insert([{
+     content,
+     user_id:user.id,
+     username:user.email || "Guest"
+   }])
+   .select();
+
+ postInput.value="";
+
+ if(data && data[0]){
+   knownPostIds.add(data[0].id);
+   renderPost(data[0]);
+ }
+};
 
 /* ================= EDIT POST ================= */
 
@@ -181,7 +201,7 @@ function startEdit(postId){
  contentDiv.innerHTML = `
    <textarea id="edit-${postId}">${oldText}</textarea>
    <button class="primary" onclick="saveEdit('${postId}')">Save</button>
-   <button class="cancel" onclick="cancelEdit('${postId}','${oldText}')">Cancel</button>
+   <button class="cancel" onclick="cancelEdit('${postId}', \`${oldText}\`)">Cancel</button>
  `;
 }
 
@@ -207,34 +227,8 @@ async function saveEdit(postId){
 }
 
 function cancelEdit(postId, oldText){
- document.getElementById("content-"+postId).innerHTML = oldText;
+ document.getElementById("content-"+postId).innerText = oldText;
 }
-
-/* ================= CREATE POST ================= */
-
-postBtn.onclick = async ()=>{
-
- if(!user) return alert("Login first");
-
- const content = postInput.value.trim();
- if(!content) return alert("Post empty");
-
- const { data } = await supabaseClient
-   .from("posts")
-   .insert([{
-     content,
-     user_id:user.id,
-     username:user.email || "Guest"
-   }])
-   .select();
-
- postInput.value="";
-
- if(data && data[0]){
-   knownPostIds.add(data[0].id);
-   renderPost(data[0],true);
- }
-};
 
 /* ================= LIKE ================= */
 
@@ -260,15 +254,7 @@ async function toggleLike(postId){
     .insert([{post_id:postId,user_id:user.id}]);
  }
 
- const { data: post } = await supabaseClient
-  .from("posts")
-  .select("*")
-  .eq("id",postId)
-  .single();
-
- if(post){
-   renderPost(post);
- }
+ loadAll(); // keep counts correct
 }
 
 /* ================= SMART SYNC ================= */
@@ -285,7 +271,7 @@ async function smartSync(){
    for(const post of posts){
      if(!knownPostIds.has(post.id)){
        knownPostIds.add(post.id);
-       renderPost(post,true);
+       renderPost(post);
      }
    }
  }
