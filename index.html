@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Final Stable Sync</title>
+<title>Social App – Edited Badge</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
@@ -16,12 +16,13 @@ button{padding:6px 12px;border:none;border-radius:8px;margin-top:8px;cursor:poin
 .logout{background:#ef4444;color:white}
 .edit{background:#f59e0b;color:white}
 .cancel{background:#6b7280;color:white}
+.edited{font-size:12px;color:#9ca3af;margin-left:6px}
 textarea{width:100%;padding:8px;border-radius:8px;background:#222;color:white}
 </style>
 </head>
 <body>
 
-<h2>🔥 Social App – Final Stable Sync</h2>
+<h2>🔥 Social App – Edited Badge</h2>
 
 <div class="card">
 <div id="authSection">
@@ -114,16 +115,19 @@ async function fullSync(){
 
  posts.forEach(post=>{
    const users = likeMap[post.id] || [];
+
+   const edited = post.updated_at &&
+                  post.updated_at !== post.created_at;
+
    const state = {
      content: post.content,
      likeCount: users.length,
-     liked: user ? users.includes(user.id) : false
+     liked: user ? users.includes(user.id) : false,
+     edited: edited
    };
 
    if(!cache[post.id] ||
-      cache[post.id].content !== state.content ||
-      cache[post.id].likeCount !== state.likeCount ||
-      cache[post.id].liked !== state.liked){
+      JSON.stringify(cache[post.id]) !== JSON.stringify(state)){
 
         renderPost(post,state);
         cache[post.id] = state;
@@ -136,15 +140,14 @@ async function fullSync(){
 function renderPost(post,state){
 
  let div = document.getElementById("post-"+post.id);
-
  const isOwner = user && user.id === post.user_id;
 
  const html = `
    <b>${post.username || "User"}</b>
+   ${state.edited ? `<span class="edited">(edited)</span>` : ""}
    <div id="content-${post.id}">${state.content}</div>
    ${isOwner ? `<button class="edit" onclick="startEdit('${post.id}')">Edit</button>` : ""}
-   <button class="like"
-     onclick="toggleLike('${post.id}')">
+   <button class="like" onclick="toggleLike('${post.id}')">
      ${state.liked?"Unlike":"Like"} (${state.likeCount})
    </button>
  `;
@@ -204,9 +207,7 @@ async function saveEdit(postId){
 }
 
 function cancelEdit(postId){
- // 🔥 restore from cache without reload
- const oldText = cache[postId].content;
- document.getElementById("content-"+postId).innerText = oldText;
+ document.getElementById("content-"+postId).innerText = cache[postId].content;
 }
 
 /* ================= LIKE ================= */
