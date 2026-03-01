@@ -52,6 +52,7 @@ const supabaseClient = createClient(
 );
 
 let user = null;
+let lastPostId = null;
 
 /* ================= INIT ================= */
 
@@ -59,7 +60,7 @@ async function init(){
  const { data } = await supabaseClient.auth.getUser();
  user = data.user;
  updateUI();
- loadPosts();
+ await loadPosts();
 }
 init();
 
@@ -112,7 +113,12 @@ async function loadPosts(){
    return;
  }
 
+ const feed = document.getElementById("feed");
  feed.innerHTML="";
+
+ if(posts.length > 0){
+   lastPostId = posts[0].id;
+ }
 
  for(const post of posts){
    renderPost(post);
@@ -181,10 +187,10 @@ postBtn.onclick = async ()=>{
    }]);
 
  postInput.value="";
- loadPosts();
+ await loadPosts();
 };
 
-/* ================= LIKE (NO FEED RELOAD) ================= */
+/* ================= LIKE ================= */
 
 async function toggleLike(postId){
 
@@ -229,11 +235,34 @@ async function toggleLike(postId){
  btn.innerText = `${liked?"Unlike":"Like"} (${count||0})`;
 }
 
-/* ================= AUTO SYNC EVERY 5 SECONDS ================= */
+/* ================= SMART AUTO SYNC ================= */
+
+async function smartSync(){
+
+ const { data: posts } = await supabaseClient
+  .from("posts")
+  .select("id")
+  .order("created_at",{ascending:false})
+  .limit(1);
+
+ if(!posts || posts.length === 0) return;
+
+ const newestId = posts[0].id;
+
+ if(lastPostId === null){
+   lastPostId = newestId;
+   return;
+ }
+
+ if(newestId !== lastPostId){
+   lastPostId = newestId;
+   loadPosts();
+ }
+}
 
 setInterval(()=>{
  if(user){
-   loadPosts();
+   smartSync();
  }
 },5000);
 
