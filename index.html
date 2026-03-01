@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Social App – Clean Working</title>
+<title>Social App – Smooth Sync</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -20,7 +20,7 @@ textarea{width:100%;padding:8px;border-radius:8px;background:#222;color:white}
 </head>
 <body>
 
-<h2>🔥 Social App – Clean Working</h2>
+<h2>🔥 Social App – Smooth Sync</h2>
 
 <div class="card">
 <div id="authSection">
@@ -52,7 +52,7 @@ const supabaseClient = createClient(
 );
 
 let user = null;
-let lastPostId = null;
+let knownPostIds = new Set();
 
 /* ================= INIT ================= */
 
@@ -60,7 +60,7 @@ async function init(){
  const { data } = await supabaseClient.auth.getUser();
  user = data.user;
  updateUI();
- await loadPosts();
+ await initialLoad();
 }
 init();
 
@@ -78,15 +78,8 @@ googleBtn.onclick = ()=>{
  });
 };
 
-guestBtn.onclick = ()=>{
- supabaseClient.auth.signInAnonymously();
-};
-
-logoutBtn.onclick = ()=>{
- supabaseClient.auth.signOut();
-};
-
-/* ================= UI ================= */
+guestBtn.onclick = ()=> supabaseClient.auth.signInAnonymously();
+logoutBtn.onclick = ()=> supabaseClient.auth.signOut();
 
 function updateUI(){
  if(user){
@@ -99,35 +92,27 @@ function updateUI(){
  }
 }
 
-/* ================= LOAD POSTS ================= */
+/* ================= INITIAL LOAD ================= */
 
-async function loadPosts(){
+async function initialLoad(){
 
- const { data: posts, error } = await supabaseClient
+ const { data: posts } = await supabaseClient
   .from("posts")
   .select("*")
   .order("created_at",{ascending:false});
 
- if(error){
-   console.log(error);
-   return;
- }
-
- const feed = document.getElementById("feed");
  feed.innerHTML="";
-
- if(posts.length > 0){
-   lastPostId = posts[0].id;
- }
+ knownPostIds.clear();
 
  for(const post of posts){
-   renderPost(post);
+   knownPostIds.add(post.id);
+   await renderPost(post,true);
  }
 }
 
 /* ================= RENDER POST ================= */
 
-async function renderPost(post){
+async function renderPost(post, prepend=false){
 
  const { count } = await supabaseClient
    .from("likes")
@@ -146,11 +131,9 @@ async function renderPost(post){
    liked = data.length>0;
  }
 
- const div=document.createElement("div");
- div.className="card";
- div.id="post-"+post.id;
+ let existing = document.getElementById("post-"+post.id);
 
- div.innerHTML=`
+ const html = `
    <b>${post.username || "User"}</b>
    <div>${post.content}</div>
    <button class="like"
@@ -160,46 +143,53 @@ async function renderPost(post){
    </button>
  `;
 
- feed.appendChild(div);
+ if(existing){
+   existing.innerHTML = html;
+ } else {
+   const div=document.createElement("div");
+   div.className="card";
+   div.id="post-"+post.id;
+   div.innerHTML=html;
+
+   if(prepend){
+     feed.prepend(div);
+   }else{
+     feed.appendChild(div);
+   }
+ }
 }
 
 /* ================= CREATE POST ================= */
 
 postBtn.onclick = async ()=>{
 
- if(!user){
-   alert("Login first");
-   return;
- }
+ if(!user) return alert("Login first");
 
  const content = postInput.value.trim();
- if(!content){
-   alert("Post empty");
-   return;
- }
+ if(!content) return alert("Post empty");
 
- await supabaseClient
+ const { data } = await supabaseClient
    .from("posts")
    .insert([{
      content,
      user_id:user.id,
      username:user.email || "Guest"
-   }]);
+   }])
+   .select();
 
  postInput.value="";
- await loadPosts();
+
+ if(data && data[0]){
+   knownPostIds.add(data[0].id);
+   renderPost(data[0],true);
+ }
 };
 
 /* ================= LIKE ================= */
 
 async function toggleLike(postId){
 
- if(!user){
-   alert("Login first");
-   return;
- }
-
- const btn = document.getElementById("like-"+postId);
+ if(!user) return alert("Login first");
 
  const { data } = await supabaseClient
   .from("likes")
@@ -219,44 +209,36 @@ async function toggleLike(postId){
     .insert([{post_id:postId,user_id:user.id}]);
  }
 
- const { count } = await supabaseClient
-   .from("likes")
-   .select("*",{count:"exact",head:true})
-   .eq("post_id",postId);
+ // Update only this post
+ const { data: post } = await supabaseClient
+  .from("posts")
+  .select("*")
+  .eq("id",postId)
+  .single();
 
- const { data: check } = await supabaseClient
-   .from("likes")
-   .select("id")
-   .eq("post_id",postId)
-   .eq("user_id",user.id);
-
- const liked = check.length>0;
-
- btn.innerText = `${liked?"Unlike":"Like"} (${count||0})`;
+ if(post){
+   renderPost(post);
+ }
 }
 
-/* ================= SMART AUTO SYNC ================= */
+/* ================= SMART SYNC ================= */
 
 async function smartSync(){
 
  const { data: posts } = await supabaseClient
   .from("posts")
-  .select("id")
+  .select("*")
   .order("created_at",{ascending:false})
-  .limit(1);
+  .limit(5);
 
- if(!posts || posts.length === 0) return;
+ if(!posts) return;
 
- const newestId = posts[0].id;
+ for(const post of posts){
 
- if(lastPostId === null){
-   lastPostId = newestId;
-   return;
- }
-
- if(newestId !== lastPostId){
-   lastPostId = newestId;
-   loadPosts();
+   if(!knownPostIds.has(post.id)){
+     knownPostIds.add(post.id);
+     renderPost(post,true);
+   }
  }
 }
 
@@ -264,7 +246,7 @@ setInterval(()=>{
  if(user){
    smartSync();
  }
-},5000);
+},4000);
 
 </script>
 
